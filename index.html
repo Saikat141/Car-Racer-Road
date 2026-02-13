@@ -2,9 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Highway Heat - Day Shift</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Highway Heat - Fixed Truck</title>
 <style>
-    body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Segoe UI', sans-serif; user-select: none; }
+    body { 
+        margin: 0; 
+        overflow: hidden; 
+        background: #87CEEB; 
+        font-family: 'Segoe UI', sans-serif; 
+        user-select: none; 
+        -webkit-user-select: none;
+        touch-action: none; 
+    }
     
     /* UI LAYOUT */
     #ui {
@@ -34,6 +43,43 @@
     }
     #mute-btn:hover { background: rgba(0,0,0,0.6); }
 
+    /* === MOBILE CONTROLS === */
+    #mobile-controls {
+        display: none; 
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        pointer-events: none;
+    }
+
+    @media (hover: none) and (pointer: coarse) {
+        #mobile-controls { display: block; }
+        .hud-top { padding: 15px; } 
+    }
+
+    .touch-zone {
+        position: absolute; top: 0; height: 100%; width: 40%;
+        pointer-events: auto;
+        display: flex; align-items: center; justify-content: center;
+    }
+    
+    #zone-left { left: 0; }
+    #zone-right { right: 0; }
+    
+    .zone-arrow {
+        font-size: 60px; color: rgba(255,255,255,0.3); font-weight: bold;
+    }
+
+    #jump-btn {
+        position: absolute; bottom: 30px; right: 30px; 
+        width: 80px; height: 80px;
+        background: rgba(255, 68, 0, 0.8);
+        border: 4px solid #fff; border-radius: 50%;
+        pointer-events: auto;
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-weight: 900; font-size: 16px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    #jump-btn:active { background: #ff6600; transform: scale(0.95); }
+
     /* MENU SCREENS */
     #overlay-screen {
         pointer-events: auto; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -51,6 +97,7 @@
         box-shadow: 0 20px 50px rgba(0,0,0,0.3);
         border-radius: 8px;
         transform: skewX(-5deg);
+        max-width: 80%;
     }
     
     h1 { 
@@ -67,12 +114,18 @@
         font-size: 20px; font-weight: 800; cursor: pointer;
         text-transform: uppercase; letter-spacing: 1px;
         transition: 0.2s; 
-        transform: skewX(5deg); /* Counter skews the text */
+        transform: skewX(5deg);
     }
     button:hover { background: #ff6600; transform: scale(1.05) skewX(5deg); }
     
     #game-over-content { display: none; }
     .danger-text { color: #cc0000; }
+
+    @media (max-width: 600px) {
+        h1 { font-size: 32px; }
+        .card { padding: 30px; }
+        .key-instruction { display: none; } 
+    }
 </style>
 </head>
 <body>
@@ -82,13 +135,20 @@
         <div class="score-box"><span id="score">0</span> m</div>
         <div id="mute-btn" onclick="toggleMute()">🔊</div>
     </div>
+
+    <div id="mobile-controls">
+        <div id="zone-left" class="touch-zone"><div class="zone-arrow">❮</div></div>
+        <div id="zone-right" class="touch-zone"><div class="zone-arrow">❯</div></div>
+        <div id="jump-btn">JUMP</div>
+    </div>
 </div>
 
 <div id="overlay-screen">
     <div class="card">
         <div id="start-content">
             <h1>Highway Heat</h1>
-            <p><span class="key">←</span> <span class="key">→</span> CHANGE LANES &nbsp;|&nbsp; <span class="key">SPACE</span> JUMP</p>
+            <p class="key-instruction"><span class="key">←</span> <span class="key">→</span> CHANGE LANES &nbsp;|&nbsp; <span class="key">SPACE</span> JUMP</p>
+            <p id="mobile-instruction" style="display:none; font-size: 14px; color: #888;">TAP SIDES TO STEER | TAP BUTTON TO JUMP</p>
             <button onclick="initGame()">START ENGINE</button>
         </div>
         <div id="game-over-content">
@@ -108,25 +168,20 @@ let isMuted = false;
 
 function initAudio() {
     if(audioCtx.state === 'suspended') audioCtx.resume();
-    
     masterGain = audioCtx.createGain();
     masterGain.gain.value = isMuted ? 0 : 0.3;
     masterGain.connect(audioCtx.destination);
 
-    // Car Engine (Rumble)
     engineOsc = audioCtx.createOscillator();
     engineGain = audioCtx.createGain();
-    
     engineOsc.type = 'sawtooth'; 
     engineOsc.frequency.value = 60; 
 
-    // Lowpass filter to make it sound muffled like an engine
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = 400;
 
     engineGain.gain.value = 0; 
-
     engineOsc.connect(filter);
     filter.connect(engineGain);
     engineGain.connect(masterGain);
@@ -134,14 +189,9 @@ function initAudio() {
 }
 
 function updateEngineSound(speedRatio) {
-    if(!isPlaying) { 
-        engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2); 
-        return; 
-    }
-    // Rev the engine
+    if(!isPlaying) { engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2); return; }
     const targetFreq = 60 + (speedRatio * 150); 
     const targetVol = 0.2 + (speedRatio * 0.1);
-
     engineOsc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.1);
     engineGain.gain.setTargetAtTime(targetVol, audioCtx.currentTime, 0.1);
 }
@@ -150,8 +200,7 @@ function playSound(type) {
     if(isMuted) return;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(masterGain);
+    osc.connect(gain); gain.connect(masterGain);
     const now = audioCtx.currentTime;
 
     if(type === 'coin') {
@@ -160,16 +209,14 @@ function playSound(type) {
         osc.frequency.exponentialRampToValueAtTime(1500, now + 0.1);
         gain.gain.setValueAtTime(0.3, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-        osc.start(now);
-        osc.stop(now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
     } else if (type === 'crash') {
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(100, now);
         osc.frequency.exponentialRampToValueAtTime(10, now + 0.3);
         gain.gain.setValueAtTime(0.5, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-        osc.start(now);
-        osc.stop(now + 0.4);
+        osc.start(now); osc.stop(now + 0.4);
     }
 }
 
@@ -194,16 +241,16 @@ let verticalVelocity = 0;
 let isJumping = false;
 
 // Materials
-const carPaintMat = new THREE.MeshStandardMaterial({color: 0xd40000, roughness: 0.3, metalness: 0.6}); // Red Sports Car
+const carPaintMat = new THREE.MeshStandardMaterial({color: 0xd40000, roughness: 0.3, metalness: 0.6});
 const wheelMat = new THREE.MeshLambertMaterial({color: 0x111111});
 const glassMat = new THREE.MeshPhongMaterial({color: 0x66ccff, shininess: 100, transparent: true, opacity: 0.7});
-const trafficMat = new THREE.MeshStandardMaterial({color: 0x335599}); // Blue traffic cars
-const truckMat = new THREE.MeshStandardMaterial({color: 0xeeeeee}); // White trucks
+const trafficMat = new THREE.MeshStandardMaterial({color: 0x335599});
+const truckMat = new THREE.MeshStandardMaterial({color: 0xeeeeee});
 
 function init() {
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB); // SKY BLUE
-    scene.fog = new THREE.Fog(0x87CEEB, 20, 150); // White/Blue Fog
+    scene.background = new THREE.Color(0x87CEEB); 
+    scene.fog = new THREE.Fog(0x87CEEB, 20, 150);
 
     camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 300);
     camera.position.set(0, 4, 8);
@@ -215,60 +262,43 @@ function init() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.body.appendChild(renderer.domElement);
 
-    // DAYLIGHT SETUP
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x44aa44, 0.8); // White sky, Green ground
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x44aa44, 0.8);
     scene.add(hemiLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffee, 1.2); // Sun
+    const dirLight = new THREE.DirectionalLight(0xffffee, 1.2);
     dirLight.position.set(50, 100, 50);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 2048;
     dirLight.shadow.mapSize.height = 2048;
-    dirLight.shadow.camera.near = 0.5;
-    dirLight.shadow.camera.far = 500;
-    dirLight.shadow.camera.left = -50;
-    dirLight.shadow.camera.right = 50;
-    dirLight.shadow.camera.top = 50;
-    dirLight.shadow.camera.bottom = -50;
     scene.add(dirLight);
 
     createEnvironment();
     createPlayerCar();
     initAudio();
+    
+    if (window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
+        document.getElementById('mobile-instruction').style.display = 'block';
+    }
+
     animate();
 }
 
 function createEnvironment() {
-    // 1. Asphalt Road
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 128;
     const ctx = canvas.getContext('2d');
     
-    // Grey Asphalt
-    ctx.fillStyle = '#444'; 
-    ctx.fillRect(0,0,128,128);
-    
-    // Noise (Grain)
+    ctx.fillStyle = '#444'; ctx.fillRect(0,0,128,128);
     for(let i=0; i<500; i++) {
         ctx.fillStyle = Math.random() > 0.5 ? '#555' : '#333';
         ctx.fillRect(Math.random()*128, Math.random()*128, 2, 2);
     }
-
-    // Lane Markers
-    ctx.fillStyle = '#fff'; // Outer lines
-    ctx.fillRect(5, 0, 4, 128);
-    ctx.fillRect(119, 0, 4, 128);
-    
-    ctx.fillStyle = '#fb0'; // Center dashed lines
-    ctx.fillRect(41, 20, 4, 60);
-    ctx.fillRect(83, 20, 4, 60);
+    ctx.fillStyle = '#fff'; ctx.fillRect(5, 0, 4, 128); ctx.fillRect(119, 0, 4, 128);
+    ctx.fillStyle = '#fb0'; ctx.fillRect(41, 20, 4, 60); ctx.fillRect(83, 20, 4, 60);
 
     const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(1, 20);
-    // Anisotropy makes textures look good at oblique angles
-    tex.anisotropy = 16; 
+    tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1, 20); tex.anisotropy = 16; 
 
     const geo = new THREE.PlaneGeometry(30, 400);
     const mat = new THREE.MeshStandardMaterial({map: tex, roughness: 0.9});
@@ -278,116 +308,87 @@ function createEnvironment() {
     road.receiveShadow = true;
     scene.add(road);
 
-    // 2. Grass Sides
     const grassGeo = new THREE.PlaneGeometry(100, 400);
     const grassMat = new THREE.MeshLambertMaterial({color: 0x33aa33});
-    
     grassLeft = new THREE.Mesh(grassGeo, grassMat);
     grassLeft.rotation.x = -Math.PI/2;
     grassLeft.position.set(-65, -0.1, -150);
     scene.add(grassLeft);
-    
     grassRight = new THREE.Mesh(grassGeo, grassMat);
     grassRight.rotation.x = -Math.PI/2;
     grassRight.position.set(65, -0.1, -150);
     scene.add(grassRight);
 }
 
-// === FACTORY FUNCTIONS FOR 3D OBJECTS ===
-
 function createWheel() {
     const w = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.3, 16), wheelMat);
-    w.rotation.z = Math.PI/2;
-    w.castShadow = true;
+    w.rotation.z = Math.PI/2; w.castShadow = true;
     return w;
 }
 
 function createPlayerCar() {
     player = new THREE.Group();
-
-    // Chassis
     const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 3.5), carPaintMat);
-    chassis.position.y = 0.6;
-    chassis.castShadow = true;
+    chassis.position.y = 0.6; chassis.castShadow = true;
     player.add(chassis);
-
-    // Cabin (Windshield area)
     const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 1.8), glassMat);
-    cabin.position.set(0, 1.0, -0.2);
-    player.add(cabin);
-
-    // Spoiler
+    cabin.position.set(0, 1.0, -0.2); player.add(cabin);
     const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 0.5), carPaintMat);
-    spoiler.position.set(0, 0.9, 1.6);
-    player.add(spoiler);
-
-    // Wheels
-    const wPositions = [
-        [-0.9, 0.35, -1.2], [0.9, 0.35, -1.2], 
-        [-0.9, 0.35, 1.2],  [0.9, 0.35, 1.2]
-    ];
-    wPositions.forEach(pos => {
-        const w = createWheel();
-        w.position.set(...pos);
-        player.add(w);
+    spoiler.position.set(0, 0.9, 1.6); player.add(spoiler);
+    
+    [[-0.9, 0.35, -1.2], [0.9, 0.35, -1.2], [-0.9, 0.35, 1.2], [0.9, 0.35, 1.2]].forEach(pos => {
+        const w = createWheel(); w.position.set(...pos); player.add(w);
     });
-
     scene.add(player);
 }
 
 function createTrafficCar() {
     const group = new THREE.Group();
-    // Body
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 3.8), trafficMat);
-    body.position.y = 0.6;
-    body.castShadow = true;
-    group.add(body);
-    // Roof
+    body.position.y = 0.6; body.castShadow = true; group.add(body);
     const roof = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 2), trafficMat);
-    roof.position.set(0, 1.2, 0);
-    roof.castShadow = true;
-    group.add(roof);
-    // Wheels
-    const wPositions = [[-0.9,0.35,-1.2], [0.9,0.35,-1.2], [-0.9,0.35,1.2], [0.9,0.35,1.2]];
-    wPositions.forEach(pos => {
-        const w = createWheel();
-        w.position.set(...pos);
-        group.add(w);
+    roof.position.set(0, 1.2, 0); roof.castShadow = true; group.add(roof);
+    [[-0.9,0.35,-1.2], [0.9,0.35,-1.2], [-0.9,0.35,1.2], [0.9,0.35,1.2]].forEach(pos => {
+        const w = createWheel(); w.position.set(...pos); group.add(w);
     });
     return group;
 }
 
+// === FIXED TRUCK FUNCTION (Now includes wheels!) ===
 function createTruck() {
     const group = new THREE.Group();
     // Container
     const container = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.5, 5), truckMat);
-    container.position.set(0, 1.6, 0.5);
-    container.castShadow = true;
-    group.add(container);
+    container.position.set(0, 1.6, 0.5); container.castShadow = true; group.add(container);
     // Cab
     const cab = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.5, 1.5), new THREE.MeshLambertMaterial({color:0x333333}));
-    cab.position.set(0, 1.1, -2.8);
-    cab.castShadow = true;
-    group.add(cab);
+    cab.position.set(0, 1.1, -2.8); cab.castShadow = true; group.add(cab);
+    
+    // Add 6 Wheels for the Truck
+    const wPositions = [
+        [-1.1, 0.35, -2.8], [1.1, 0.35, -2.8], // Front Cab Wheels
+        [-1.1, 0.35, 0.5],  [1.1, 0.35, 0.5],  // Mid Container Wheels
+        [-1.1, 0.35, 2.0],  [1.1, 0.35, 2.0]   // Back Container Wheels
+    ];
+    
+    wPositions.forEach(pos => {
+        const w = createWheel(); 
+        w.position.set(...pos); 
+        group.add(w);
+    });
+    
     return group;
 }
 
 function createCone() {
     const group = new THREE.Group();
-    // Base
     const base = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.1, 0.8), new THREE.MeshLambertMaterial({color:0xff6600}));
-    base.position.y = 0.05;
-    group.add(base);
-    // Cone
+    base.position.y = 0.05; group.add(base);
     const cone = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.2, 16), new THREE.MeshLambertMaterial({color:0xff6600}));
-    cone.position.y = 0.65;
-    group.add(cone);
-    // White stripe
+    cone.position.y = 0.65; group.add(cone);
     const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.3, 16), new THREE.MeshBasicMaterial({color:0xffffff}));
-    stripe.position.y = 0.6;
-    group.add(stripe);
-    
-    group.scale.set(1.5,1.5,1.5); // Make it visible
+    stripe.position.y = 0.6; group.add(stripe);
+    group.scale.set(1.5,1.5,1.5);
     return group;
 }
 
@@ -395,63 +396,46 @@ function createCoin() {
     const geo = new THREE.TorusGeometry(0.5, 0.15, 8, 16);
     const mat = new THREE.MeshPhongMaterial({color: 0xffd700, shininess: 100});
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.y = 1.0;
-    mesh.castShadow = true;
+    mesh.position.y = 1.0; mesh.castShadow = true;
     return mesh;
 }
 
 /* ================= GAME LOGIC ================= */
-
 function spawnObject() {
     const lane = Math.floor(Math.random() * 3) - 1; 
     const xPos = lane * LANE_WIDTH;
 
-    // 20% Chance for Coin
     if(Math.random() > 0.8) {
         const coin = createCoin();
         coin.position.set(xPos, 1, -250);
-        scene.add(coin);
-        coins.push(coin);
+        scene.add(coin); coins.push(coin);
         return;
     }
 
-    // Obstacles
     let obs;
     const type = Math.random();
-    
     if(type < 0.3) {
-        // Traffic Cone (Jumpable)
-        obs = createCone();
-        obs.userData = { type: 'jumpable' };
+        obs = createCone(); obs.userData = { type: 'jumpable' };
     } else if (type < 0.7) {
-        // Sedan (Solid)
-        obs = createTrafficCar();
-        obs.userData = { type: 'solid' };
+        obs = createTrafficCar(); obs.userData = { type: 'solid' };
     } else {
-        // Truck (Solid, Tall)
-        obs = createTruck();
-        obs.userData = { type: 'solid' };
+        obs = createTruck(); obs.userData = { type: 'solid' };
     }
     
     obs.position.set(xPos, 0, -250);
-    scene.add(obs);
-    obstacles.push(obs);
+    scene.add(obs); obstacles.push(obs);
 }
 
 function initGame() {
     document.getElementById('overlay-screen').style.display = 'none';
-    
-    // Clear old
     obstacles.forEach(o => scene.remove(o)); obstacles = [];
     coins.forEach(c => scene.remove(c)); coins = [];
-    
     player.position.set(0,0,0);
     player.rotation.set(0,0,0);
     targetX = 0;
     speed = 0.5;
     score = 0;
     isPlaying = true;
-    
     if(audioCtx.state === 'suspended') audioCtx.resume();
 }
 
@@ -470,16 +454,23 @@ function gameOver() {
     document.getElementById('overlay-screen').style.display = 'flex';
 }
 
+// Controls
+function moveLeft() { if(isPlaying) targetX = Math.max(-LANE_WIDTH, targetX - LANE_WIDTH); }
+function moveRight() { if(isPlaying) targetX = Math.min(LANE_WIDTH, targetX + LANE_WIDTH); }
+function jump() {
+    if(isPlaying && !isJumping) {
+        verticalVelocity = 0.3; isJumping = true; player.rotation.x = -0.15;
+    }
+}
 document.addEventListener('keydown', (e) => {
     if(!isPlaying) return;
-    if(e.key === 'ArrowLeft') targetX = Math.max(-LANE_WIDTH, targetX - LANE_WIDTH);
-    if(e.key === 'ArrowRight') targetX = Math.min(LANE_WIDTH, targetX + LANE_WIDTH);
-    if(e.key === ' ' && !isJumping) {
-        verticalVelocity = 0.3;
-        isJumping = true;
-        player.rotation.x = -0.15; // Wheelie
-    }
+    if(e.key === 'ArrowLeft') moveLeft();
+    if(e.key === 'ArrowRight') moveRight();
+    if(e.key === ' ') jump();
 });
+document.getElementById('zone-left').addEventListener('touchstart', (e) => { e.preventDefault(); moveLeft(); });
+document.getElementById('zone-right').addEventListener('touchstart', (e) => { e.preventDefault(); moveRight(); });
+document.getElementById('jump-btn').addEventListener('touchstart', (e) => { e.preventDefault(); jump(); });
 
 function animate() {
     requestAnimationFrame(animate);
@@ -487,103 +478,56 @@ function animate() {
     
     if(isPlaying) {
         if(speed < MAX_SPEED) speed += 0.0003;
-        
         score += speed;
         document.getElementById('score').innerText = Math.floor(score);
-
-        // Player Move
         player.position.x += (targetX - player.position.x) * 10 * delta;
-        
-        // Lean into turns
         player.rotation.z = (player.position.x - targetX) * 0.05; 
         
-        // Jump Physics
         player.position.y += verticalVelocity;
         if(player.position.y > 0) {
-            verticalVelocity -= 0.015; // Gravity
+            verticalVelocity -= 0.015; 
         } else if (player.position.y <= 0 && isJumping) {
-            player.position.y = 0;
-            isJumping = false;
-            verticalVelocity = 0;
-            player.rotation.x = 0;
+            player.position.y = 0; isJumping = false; verticalVelocity = 0; player.rotation.x = 0;
         }
 
-        // Texture Scroll - FIXED DIRECTION
         road.material.map.offset.y += speed * 0.02;
 
-        // Spawn Logic
         if(Math.random() < 0.02 + (speed/100)) {
             if(obstacles.length === 0 || obstacles[obstacles.length-1].position.z > -180) {
                 spawnObject();
             }
         }
-
         const moveSpeed = speed * 60;
-
-        // Obstacles Loop
         for(let i=obstacles.length-1; i>=0; i--) {
             let obs = obstacles[i];
             obs.position.z += moveSpeed * delta;
-
-            // Simple Box Collision logic
             const dx = Math.abs(player.position.x - obs.position.x);
             const dz = Math.abs(player.position.z - obs.position.z);
-            
-            // Hitbox sizes vary by type
-            let hitX = 1.5; 
-            let hitZ = 2.5;
-
-            if(dx < hitX && dz < hitZ) {
-                // If it's a cone/jumpable AND we are high enough
-                if(obs.userData.type === 'jumpable' && player.position.y > 0.8) {
-                    // Jumped over it!
-                } else {
-                    gameOver();
-                }
+            if(dx < 1.5 && dz < 2.5) {
+                if(obs.userData.type === 'jumpable' && player.position.y > 0.8) { /* Safe */ } else { gameOver(); }
             }
-
-            if(obs.position.z > 10) {
-                scene.remove(obs);
-                obstacles.splice(i, 1);
-            }
+            if(obs.position.z > 10) { scene.remove(obs); obstacles.splice(i, 1); }
         }
-
-        // Coins Loop
         for(let i=coins.length-1; i>=0; i--) {
             let c = coins[i];
-            c.position.z += moveSpeed * delta;
-            c.rotation.y += 0.1;
-
+            c.position.z += moveSpeed * delta; c.rotation.y += 0.1;
             const dx = Math.abs(player.position.x - c.position.x);
             const dz = Math.abs(player.position.z - c.position.z);
             const dy = Math.abs(player.position.y - c.position.y);
-
             if(dx < 1.5 && dz < 1.5 && dy < 2) {
-                playSound('coin');
-                score += 200;
-                scene.remove(c);
-                coins.splice(i, 1);
-                continue;
+                playSound('coin'); score += 200; scene.remove(c); coins.splice(i, 1); continue;
             }
-            if(c.position.z > 10) {
-                scene.remove(c);
-                coins.splice(i, 1);
-            }
+            if(c.position.z > 10) { scene.remove(c); coins.splice(i, 1); }
         }
-
         updateEngineSound(speed / MAX_SPEED);
     }
-
     renderer.render(scene, camera);
 }
-
-// Handle Resize
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
 init();
 </script>
 </body>
