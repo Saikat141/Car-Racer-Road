@@ -10,7 +10,11 @@ https://saikat141.github.io/Car-Racer-Road/
 
 
 ****Game Views*****
-.../Game_scr_01.jpg
+<p align="center">
+  <img src="assets/Game_src_01.jpg" width="45%">
+  <img src="assets/Game_src_02.jpg" width="45%">
+  <img src="assets/Game_src_03.jpg" width="45%">
+</p>
 
 
 
