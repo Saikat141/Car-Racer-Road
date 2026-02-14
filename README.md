@@ -9,16 +9,17 @@ Highway Heat is a browser-based 3D racing game demonstrating real-time WebGL ren
 https://saikat141.github.io/Car-Racer-Road/
 
 
-## 📸 Game Views
+## 📸 Game Preview
 
 <p align="center">
-  <img src="Game_scr_01.jpg" width="45%">
-  <img src="Game_scr_02.jpg" width="45%">
+  <img src="Game_scr_01.jpg" width="48%">
+  <img src="Game_scr_02.jpg" width="48%">
 </p>
 
 <p align="center">
-  <img src="Game_scr_03.jpg" width="60%">
+  <img src="Game_scr_03.jpg" width="70%">
 </p>
+
 
 
 
