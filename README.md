@@ -10,7 +10,7 @@ https://saikat141.github.io/Car-Racer-Road/
 
 
 ****Game Views*****
-https://github.com/Saikat141/Car-Racer-Road/blob/main/Game_scr_01.jpg
+.../Game_scr_01.jpg
 
 
 
